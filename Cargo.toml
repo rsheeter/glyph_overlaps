@@ -1,0 +1,8 @@
+[package]
+name = "glyph_overlaps"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+kurbo = "0.11.1"
+norad = "0.14.2"
