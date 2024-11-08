@@ -4,5 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+fontdrasil = "0.0.1"
+fontir = "0.0.1"
 kurbo = "0.11.1"
 norad = "0.14.2"
+
+path-bool = {git = "https://github.com/GraphiteEditor/Graphite"}
