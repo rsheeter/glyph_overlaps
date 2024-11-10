@@ -1,5 +1,9 @@
 # glyph_overlaps
 
+For context, setting the glyf overlap flag is needed for OSX to avoid "holes" appearing
+when rendering outlines with overlaps due to use of `evenodd`. Variable fonts are wont
+to use overlaps, prior to variable fonts they were relatively rare.
+
 Usage
 
 ```shell
@@ -10,6 +14,8 @@ $ cargo run -- path/to/file.designspace
 
 ## Potential approaches
 
+1. Have humans inspect the outlines and maintain a list of glyphs that need the bit set
+   * We are actually doing this for some fonts. Sounds tiresome.
 1. Render nonzero and evenodd, if they don't match then we need the overlap bit
    * This actually seems to work, albeit potentially at cost of doing extra work
    * `overlap.py` does this, it was the original idea: just directly check
