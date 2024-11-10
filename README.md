@@ -4,12 +4,22 @@ For context, setting the glyf overlap flag is needed for OSX to avoid "holes" ap
 when rendering outlines with overlaps due to use of `evenodd`. Variable fonts are wont
 to use overlaps, prior to variable fonts they were relatively rare.
 
+For example, the [A from Roboto Flex](https://github.com/googlefonts/roboto-flex/blob/main/sources/1A-drawings/Mains/RobotoFlex_wght400.ufo/glyphs/A_.glif) has overlaps:
+
+| nonzero | evenodd | diff highlighted |
+| ------------- | ------------- | ------------- |
+| ![nonzero](resources/images/A.nonzero.png) | ![evenodd](resources/images/A.evenodd.png) | ![diff](resources/images/A.diff.png) |
+
 Usage
 
 ```shell
+# General
 $ cargo run -- path/to/file.glif
 $ cargo run -- path/to/dir.ufo
 $ cargo run -- path/to/file.designspace
+
+# Assuming a sibling clone of https://github.com/googlefonts/roboto-flex
+$ cargo run -- ../roboto-flex/sources/1A-drawings/Mains/RobotoFlex_wght400.ufo/glyphs/A_.glif
 ```
 
 ## Potential approaches
