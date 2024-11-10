@@ -1,8 +1,9 @@
 # glyph_overlaps
 
 For context, setting the glyf overlap flag is needed for OSX to avoid "holes" appearing
-when rendering outlines with overlaps due to use of `evenodd`. Variable fonts are wont
-to use overlaps, prior to variable fonts they were relatively rare.
+when rendering outlines with overlaps due to use of `evenodd` unless a special flag
+(the overlap bit) is set for the glyph. Variable fonts are wont to use overlaps,
+prior to variable fonts they were relatively rare.
 
 For example, the [A from Roboto Flex](https://github.com/googlefonts/roboto-flex/blob/main/sources/1A-drawings/Mains/RobotoFlex_wght400.ufo/glyphs/A_.glif) has overlaps:
 
@@ -26,12 +27,11 @@ $ cargo run -- ../roboto-flex/sources/1A-drawings/Mains/RobotoFlex_wght400.ufo/g
 
 1. Have humans inspect the outlines and maintain a list of glyphs that need the bit set
    * We are actually doing this for some fonts. Sounds tiresome.
-1. Render nonzero and evenodd, if they don't match then we need the overlap bit
-   * This actually seems to work, albeit potentially at cost of doing extra work
+1. Render images with each fill rule (nonzero, evenodd), if they don't match then we need the overlap bit
    * `overlap.py` does this, it was the original idea: just directly check
    * Might miss very small overlaps but that's likely OK for our use case
-   * Ideally rendering would be done w/o anti-aliasing, we just want the insideness signal
-       * Since these days resvg is under linebender maybe we can support that?
+   * Render without anti-aliasing, we only care about insideness
+   * Rust code here has a quick and dirty implementation of this
 1. Rendering images seems slow and indirect, why not just check directly?
    * Brute force: compute winding for a whole bunch of points (say the upem grid) and see if any of them would have different results based on fill rule
       * This is very slow when done naively, rasterizers have all sorts of optimizations
