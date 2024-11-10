@@ -10,3 +10,4 @@ kurbo = "0.11.1"
 norad = "0.14.2"
 
 path-bool = {git = "https://github.com/GraphiteEditor/Graphite"}
+resvg = { version = "0.44.0", default-features = false }
