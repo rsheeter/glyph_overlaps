@@ -25,6 +25,7 @@ $ cargo run -- path/to/file.designspace
 1. Rendering images seems slow and indirect, why not just check directly?
    * Brute force: compute winding for a whole bunch of points (say the upem grid) and see if any of them would have different results based on fill rule
       * This is very slow when done naively, rasterizers have all sorts of optimizations
+      * We could start optimizing but the ROI seems low
    * @raphlinus suggested https://github.com/GraphiteEditor/Graphite/tree/master/libraries/path-bool likely has all the parts needed to detect differences in winding
       * It builds a planar graph in which each face is labeled with the winding number
       * The overlap bit is needs to be set when the max winding number minus the min winding number is > 1
