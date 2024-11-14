@@ -2,11 +2,11 @@ use std::path::{Path, PathBuf};
 
 use fontdrasil::types::GlyphName;
 use fontir::ir::GlyphPathBuilder;
-use kurbo::{Affine, BezPath, Point, Rect, Shape};
-use resvg::tiny_skia::{Pixmap, PremultipliedColorU8};
+use kurbo::{Affine, BezPath, Rect, Shape};
+use tiny_skia::FillRule;
+use tiny_skia::{Paint, Pixmap, PremultipliedColorU8};
 
 const _SAVE_DEBUG_IMAGES: bool = true;
-const _OVERLAP_DETECTION: OverlapDetection = OverlapDetection::ImageDiff;
 
 #[derive(Debug)]
 struct Glyph {
@@ -62,125 +62,14 @@ impl Glyph {
             .collect()
     }
 
-    fn create_svg(&self, fill_rule: resvg::usvg::FillRule) -> (Rect, String) {
-        let mut svg = String::default();
-        let bbox = self.bezpath.bounding_box();
-        let margin = bbox.width().max(bbox.height()) * 0.1;
-        let viewbox = Rect::new(
-            (bbox.min_x() - margin).floor(),
-            (bbox.min_y() - margin).floor(),
-            (bbox.max_x() + margin).ceil(),
-            (bbox.max_y() + margin).ceil(),
-        );
-        svg.push_str("<svg viewBox=\"");
-        svg.push_str(&format!(
-            "{} {} {} {}",
-            viewbox.min_x(),
-            viewbox.min_y(),
-            viewbox.max_x(),
-            viewbox.max_y()
-        ));
-        svg.push_str("\" xmlns=\"http://www.w3.org/2000/svg\">");
-        svg.push_str("<path fill=\"gray\" fill-rule=\"");
-        svg.push_str(match fill_rule {
-            resvg::usvg::FillRule::EvenOdd => "evenodd",
-            resvg::usvg::FillRule::NonZero => "nonzero",
-        });
-        svg.push_str("\" d=\"");
-        svg.push_str(&self.bezpath.to_svg());
-        svg.push_str("\"/></svg>");
-        (viewbox, svg)
-    }
-
-    fn render_no_aa(&self, fill_rule: resvg::usvg::FillRule) -> Pixmap {
-        let (viewbox, svg) = self.create_svg(fill_rule);
-        let options: resvg::usvg::Options<'_> = resvg::usvg::Options {
-            shape_rendering: resvg::usvg::ShapeRendering::OptimizeSpeed, // anti-aliasing off
-            ..Default::default()
-        };
-        let tree = resvg::usvg::Tree::from_str(&svg, &options)
-            .unwrap_or_else(|e| panic!("Unable to create Tree for {}: {e}", self.name));
-        let mut pixmap = Pixmap::new(viewbox.width() as u32, viewbox.height() as u32)
-            .unwrap_or_else(|| panic!("Unable to create pixmap"));
-        resvg::render(&tree, Default::default(), &mut pixmap.as_mut());
-
-        if _SAVE_DEBUG_IMAGES {
-            let filename = format!(
-                "/tmp/{}.{}.png",
-                self.name,
-                match fill_rule {
-                    resvg::usvg::FillRule::EvenOdd => "evenodd",
-                    resvg::usvg::FillRule::NonZero => "nonzero",
-                }
-            );
-            save_debug_image(&filename, &pixmap);
-        }
-        pixmap
-    }
-}
-
-fn save_debug_image(filename: &str, pixmap: &Pixmap) {
-    std::fs::write(
-        filename,
-        pixmap
-            .encode_png()
-            .unwrap_or_else(|e| panic!("Failed to encode png for {filename}: {e}")),
-    )
-    .unwrap_or_else(|e| panic!("Failed to write {filename}: {e}"));
-    eprintln!("Wrote {filename}");
-}
-
-#[allow(unused)]
-enum OverlapDetection {
-    ComputeWindingALot,
-    ImageDiff,
-    FaceGraph,
-}
-
-impl OverlapDetection {
-    fn has_fill_rule_discrepency(&self, glyph: &Glyph) -> bool {
-        match self {
-            OverlapDetection::ComputeWindingALot => Self::compute_winding_a_lot(glyph),
-            OverlapDetection::ImageDiff => Self::image_diff(glyph),
-            OverlapDetection::FaceGraph => todo!("Play with path-bool, DualGraph has the answer!"),
-        }
-    }
-
-    /// Look for fill rule problems by plotting a lot of points winding
-    ///
-    /// Naively implemented, very slow, could be massively optimized. Don't bother, there are
-    /// better approaches.
-    fn compute_winding_a_lot(glyph: &Glyph) -> bool {
-        let bbox = glyph.bezpath.bounding_box();
-        let bbox = Rect::new(
-            bbox.min_x().floor(),
-            bbox.min_y().floor(),
-            bbox.max_x().ceil(),
-            bbox.max_y().ceil(),
-        );
-
-        // Our svg is in font units. Just every whole font unit point in the bbox
-        for x in bbox.min_x() as i32..bbox.max_x() as i32 {
-            for y in bbox.min_y() as i32..bbox.max_y() as i32 {
-                let winding = glyph.bezpath.winding(Point::new(x.into(), y.into()));
-                let nonzero = winding != 0;
-                let evenodd = winding % 2 == 1;
-                if nonzero != evenodd {
-                    return true;
-                }
-            }
-        }
-        false
-    }
-
     /// Look fill rule problems by rendering evenodd and nonzero and comparing.
     ///
     /// You'd think this woefully suboptimal but it gets you all the optimizations
     /// that have gone into rendering images for free so a naive implementation does OK.
-    fn image_diff(glyph: &Glyph) -> bool {
+    fn has_fill_rule_discrepency(self: &Glyph) -> bool {
         // render without AA, we just want insideness from the pixels
-        let mut evenodd = glyph.render_no_aa(resvg::usvg::FillRule::EvenOdd);
-        let nonzero = glyph.render_no_aa(resvg::usvg::FillRule::NonZero);
+        let mut evenodd = self.render_no_aa(FillRule::EvenOdd);
+        let nonzero = self.render_no_aa(FillRule::Winding);
 
         if evenodd.pixels().len() != nonzero.pixels().len() {
             panic!("Inconsistent pixel count, seems very bad")
@@ -199,12 +88,92 @@ impl OverlapDetection {
         }
 
         if _SAVE_DEBUG_IMAGES {
-            let filename = format!("/tmp/{}.diff.png", glyph.name,);
+            let filename = format!("/tmp/{}.diff.png", self.name,);
             save_debug_image(&filename, &evenodd);
         }
 
         discrepency
     }
+
+    fn create_path(&self) -> (Rect, tiny_skia::Path) {
+        // move the path to start at 0,0
+        let mut bez = self.bezpath.clone();
+        let bbox = self.bezpath.bounding_box();
+        let margin = bbox.width().max(bbox.height()) * 0.1;
+        bez.apply_affine(Affine::translate((
+            -bbox.min_x() + margin,
+            -bbox.min_y() + margin,
+        )));
+        let bbox = bez.bounding_box(); // bbox just changed
+        let width = bbox.max_x() + margin;
+        let height = bbox.max_y() + margin;
+
+        let mut pb = tiny_skia::PathBuilder::new();
+        for el in bez.iter() {
+            match el {
+                kurbo::PathEl::MoveTo(p) => pb.move_to(p.x as f32, p.y as f32),
+                kurbo::PathEl::LineTo(p) => pb.line_to(p.x as f32, p.y as f32),
+                kurbo::PathEl::QuadTo(c, p) => {
+                    pb.quad_to(c.x as f32, c.y as f32, p.x as f32, p.y as f32)
+                }
+                kurbo::PathEl::CurveTo(c0, c1, p) => pb.cubic_to(
+                    c0.x as f32,
+                    c0.y as f32,
+                    c1.x as f32,
+                    c1.y as f32,
+                    p.x as f32,
+                    p.y as f32,
+                ),
+                kurbo::PathEl::ClosePath => pb.close(),
+            }
+        }
+
+        (
+            Rect::new(0.0, 0.0, width, height),
+            pb.finish()
+                .unwrap_or_else(|| panic!("Unable to create path for {}", self.name)),
+        )
+    }
+
+    fn render_no_aa(&self, fill_rule: FillRule) -> Pixmap {
+        let (extents, path) = self.create_path();
+        let mut pixmap = Pixmap::new(extents.width() as u32, extents.height() as u32)
+            .unwrap_or_else(|| panic!("Unable to create pixmap"));
+        let mut paint = Paint::default();
+        paint.set_color_rgba8(128, 128, 128, 255); // gray
+        paint.anti_alias = false; // just confuses diffs
+        pixmap.fill_path(
+            &path,
+            &paint,
+            fill_rule,
+            tiny_skia::Transform::identity(),
+            None,
+        );
+
+        if _SAVE_DEBUG_IMAGES {
+            let filename = format!(
+                "/tmp/{}.{}.png",
+                self.name,
+                match fill_rule {
+                    FillRule::EvenOdd => "evenodd",
+                    FillRule::Winding => "nonzero",
+                }
+            );
+            save_debug_image(&filename, &pixmap);
+        }
+        pixmap
+    }
+}
+
+fn save_debug_image(filename: &str, pixmap: &Pixmap) {
+    std::fs::write(
+        filename,
+        pixmap
+            .encode_png()
+            .unwrap_or_else(|e| panic!("Failed to encode png for {filename}: {e}")),
+    )
+    .unwrap_or_else(|e| panic!("Failed to write {filename}: {e}"));
+    eprintln!("Wrote {filename}");
 }
 
 trait ToBezPath {
@@ -250,7 +219,7 @@ fn main() {
     eprintln!("Loaded {}", glyphs.len());
 
     for glyph in &glyphs {
-        if _OVERLAP_DETECTION.has_fill_rule_discrepency(glyph) {
+        if glyph.has_fill_rule_discrepency() {
             eprintln!("{:?} needs the overlap flag", glyph.source);
         }
     }
